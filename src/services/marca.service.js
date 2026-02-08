@@ -1,8 +1,11 @@
 import Api from './api.service';
 
 export default {
-    listar() {
-        return Api().get('/marcas');
+    listar(params) {
+        return Api().get('/marcas', { params }); // Para la tabla con búsqueda
+    },
+    listarSimple() {
+        return Api().get('/marcas/listado'); // Para el select de productos
     },
     guardar(data) {
         return Api().post('/marcas', data);

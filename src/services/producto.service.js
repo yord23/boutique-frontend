@@ -1,8 +1,11 @@
 import Api from './api.service';
 
 export default {
-    listar() {
-        return Api().get('/productos');
+    listar(params) {
+        return Api().get('/productos', { params }); // Ejemplo: { q: 'jean', page: 1 }
+    },
+    mostrar(id) {
+        return Api().get(`/productos/${id}`);
     },
     guardar(data) {
         return Api().post('/productos', data);
