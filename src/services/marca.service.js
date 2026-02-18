@@ -1,19 +1,16 @@
-import Api from './api.service';
+import Api from "./api.service"
 
 export default {
-    listar(params) {
-        return Api().get('/marcas', { params }); // Para la tabla con búsqueda
+    listar: () => {
+        return Api().get("/marcas");
     },
-    listarSimple() {
-        return Api().get('/marcas/listado'); // Para el select de productos
+    guardar: (datos) => {
+        return Api().post("/marcas", datos);
     },
-    guardar(data) {
-        return Api().post('/marcas', data);
+    modificar: (id, datos) => {
+        return Api().put(`/marcas/${id}`, datos);
     },
-    actualizar(id, data) {
-        return Api().put(`/marcas/${id}`, data);
-    },
-    eliminar(id) {
+    eliminar: (id) => {
         return Api().delete(`/marcas/${id}`);
-    }
-};
+    },
+}

@@ -1,12 +1,16 @@
-import Api from './api.service';
+import Api from "./api.service"
+
 export default {
-    listar() { 
-        return Api().get('/colores'); 
+    listar: () => {
+        return Api().get("/colores");
     },
-    guardar(data) { 
-        return Api().post('/colores', data); 
+    guardar: (datos) => {
+        return Api().post("/colores", datos);
     },
-    eliminar(id) { 
-        return Api().delete(`/colores/${id}`); 
-    }
-};
+    modificar: (id, datos) => {
+        return Api().put(`/colores/${id}`, datos);
+    },
+    eliminar: (id) => {
+        return Api().delete(`/colores/${id}`);
+    },
+}

@@ -1,16 +1,19 @@
-import Api from './api.service';
+import Api from "./api.service"
 
 export default {
-    listar() {
-        return Api().get('/categorias');
+    listar: (q = "") => {
+        return Api().get(`/categorias?q=${q}`);
     },
-    guardar(data) {
-        return Api().post('/categorias', data);
+    guardar: (datos) => {
+        return Api().post("/categorias", datos);
     },
-    actualizar(id, data) {
-        return Api().put(`/categorias/${id}`, data);
+    mostrar: (id) => {
+        return Api().get(`/categorias/${id}`);
     },
-    eliminar(id) {
+    modificar: (id, datos) => {
+        return Api().put(`/categorias/${id}`, datos);
+    },
+    eliminar: (id) => {
         return Api().delete(`/categorias/${id}`);
-    }
-};
+    },
+}

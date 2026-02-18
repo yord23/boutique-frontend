@@ -1,19 +1,16 @@
-import Api from './api.service';
+import Api from "./api.service"
 
 export default {
-    listar(params) {
-        return Api().get('/proveedores', { params });
+    listar: () => {
+        return Api().get("/proveedores");
     },
-    listarSimple() {
-        return Api().get('/proveedores/listado');
+    guardar: (datos) => {
+        return Api().post("/proveedores", datos);
     },
-    guardar(data) {
-        return Api().post('/proveedores', data);
+    modificar: (id, datos) => {
+        return Api().put(`/proveedores/${id}`, datos);
     },
-    actualizar(id, data) {
-        return Api().put(`/proveedores/${id}`, data);
-    },
-    eliminar(id) {
+    eliminar: (id) => {
         return Api().delete(`/proveedores/${id}`);
-    }
-};
+    },
+}
