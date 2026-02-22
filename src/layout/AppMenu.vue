@@ -13,15 +13,16 @@ const model = ref([
             { label: 'Productos', icon: 'pi pi-fw pi-tag', to: '/admin/productos' },
             { label: 'Categorías', icon: 'pi pi-fw pi-filter', to: '/admin/categorias' }
         ]
-    },/*
+    },
+
     {
         label: 'Operaciones',
         items: [
-            { label: 'Realizar Venta', icon: 'pi pi-fw pi-money-bill', to: '/ventas/nueva' },
+            { label: 'Realizar Venta', icon: 'pi pi-fw pi-money-bill', to: '/admin/ventas' },
             { label: 'Historial de Ventas', icon: 'pi pi-fw pi-history', to: '/ventas' },
             { label: 'Clientes', icon: 'pi pi-fw pi-users', to: '/clientes' }
         ]
-    },
+    },/*
     {
         label: 'Analítica y Reportes',
         items: [

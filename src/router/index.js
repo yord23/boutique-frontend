@@ -39,6 +39,13 @@ const routes = [
                 component: () => import('@/views/admin/Productos.vue'),
                 //meta: {redirectIfAuth: true} 
             },
+            
+            {
+                path: 'ventas',
+                name: 'ventas',
+                component: () => import('@/views/admin/Ventas.vue'),
+                //meta: {redirectIfAuth: true} 
+            },
             // ... dentro de children: [ ]
             {
                 path: 'categorias', // Esto crea /admin/categorias

@@ -5,7 +5,7 @@
                 <Toolbar class="mb-4">
                     <template #start>
                         <Button label="Nuevo" icon="pi pi-plus" severity="success" class="mr-2" @click="openNew" />
-                        <Button label="Eliminar" icon="pi pi-trash" severity="danger" @click="confirmDeleteSelected" :disabled="!selectedProducts || !selectedProducts.length" />
+                        <Button label="Imprimir Etiquetas" icon="pi pi-print" class="p-button-secondary" @click="imprimirEtiquetas" :disabled="!productos || !productos.length" />
                     </template>
                     <template #end>
                         <Button label="Exportar" icon="pi pi-upload" severity="help" @click="exportCSV($event)" />
@@ -17,12 +17,16 @@
                     :value="productos"
                     v-model:selection="selectedProducts"
                     dataKey="id"
+                    lazy
                     :paginator="true"
-                    :rows="10"
+                    :rows="lazyParams.rows"
+                    :totalRecords="totalRecords"
+                    :loading="loading"
+                    :rowsPerPageOptions="[5, 10, 20, 50]"
                     :filters="filters"
-                    @page="renderTableBarcodes"
-                    @sort="renderTableBarcodes"
-                    @filter="renderTableBarcodes"
+                    @page="onPage"
+                    @sort="onPage"
+                    @filter="onPage"
                     paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                     currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} productos"
                 >
@@ -31,7 +35,7 @@
                             <h5 class="m-0">Gestión de Productos</h5>
                             <IconField iconPosition="left" class="block mt-2 md:mt-0">
                                 <InputIcon class="pi pi-search" />
-                                <InputText v-model="filters['global'].value" placeholder="Buscar..." />
+                                <InputText v-model="filters['global'].value" placeholder="Buscar..." @input="onFilter" />
                             </IconField>
                         </div>
                     </template>
@@ -53,7 +57,8 @@
                        <template #body="slotProps">
         <img 
             v-if="slotProps.data.images && slotProps.data.images.length > 0"
-            :src="`http://127.0.0.1:8000/storage/${slotProps.data.images[0].url}`" 
+            :src="getImageUrl(slotProps.data.images[0].url) + '?t=' + slotProps.data.updated_at_timestamp" 
+            loading="lazy"
             :alt="slotProps.data.name" 
             class="shadow-2 border-round" 
             style="width: 64px; height: 64px; object-fit: cover;" 
@@ -106,11 +111,17 @@
         @select="onUpload" 
         chooseLabel="Cambiar Imagen" 
         severity="secondary" 
-        class="p-button-outlined w-full" 
+        class="p-button-outlined w-full"
+        :disabled="isUploading" 
     />
 
     <div class="mt-3 flex flex-column align-items-center justify-content-center border-1 border-300 border-round p-2 bg-gray-50">
-        <span class="text-sm text-secondary mb-2">Vista previa actual:</span>
+        
+        <div class="image-container">
+            <div v-if="isUploading" class="spinner-overlay">
+                <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="8" fill="transparent" animationDuration=".5s" />
+            </div>
+        <!--span class="text-sm text-secondary mb-2">Vista previa actual:</span-->
         
         <img 
             :src="imgPreview || getImageUrl(producto.images?.[0]?.url)" 
@@ -119,9 +130,9 @@
             style="width: 180px; height: 180px; object-fit: cover;" 
             @error="(e) => e.target.src = 'https://placehold.co/180x180?text=Sin+Imagen'"
         />
-        
+        </div>
         <Button 
-            v-if="imgPreview" 
+            v-if="imgPreview && !isUploading" 
             label="Quitar selección" 
             icon="pi pi-undo" 
             text 
@@ -193,8 +204,8 @@
                 </div>
 
                 <template #footer>
-                    <Button label="Cancelar" icon="pi pi-times" text @click="hideDialog" />
-                    <Button label="Guardar" icon="pi pi-check" @click="saveProduct" />
+                    <Button label="Cancelar" icon="pi pi-times" text @click="hideDialog" :disabled="isUploading"/>
+                    <Button label="Guardar" icon="pi pi-check" @click="saveProduct" :loading="isUploading"/>
                 </template>
             </Dialog>
 
@@ -206,6 +217,7 @@
 <script setup>
 import { ref, onMounted, nextTick, watch } from 'vue';
 import  JsBarcode  from 'jsbarcode';
+import {jsPDF} from 'jspdf';
 import { FilterMatchMode } from '@primevue/core/api';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from "primevue/useconfirm";
@@ -229,6 +241,13 @@ const colores = ref([]);
 const proveedores = ref([]);
 const selectedProducts = ref();
 const submitted = ref(false);
+const isUploading = ref(false);
+const loading = ref(false);
+
+// Agrega esto a tus refs
+const totalRecords = ref(0);
+const lazyParams = ref({ page: 0, rows: 5, sortField: null, 
+    sortOrder: null }); // PrimeVue usa índice 0 para la primera página
 
 const imageFile = ref(null);
 const imgPreview = ref(null);
@@ -246,24 +265,34 @@ const getBarcode = (product) => {
 
 // Función para renderizar todos los códigos de la tabla
 const renderTableBarcodes = () => {
-    nextTick(() => {
+
         const barcodeFunction = JsBarcode.default || JsBarcode;
-        
-        productos.value.forEach(prod => {
-            const code = getBarcode(prod);
-            const elementId = `#barcode-row-${prod.id}`;
+        // Optimizamos: Buscamos solo los SVGs que existen actualmente en el DOM de la tabla
+        const barcodeElements = document.querySelectorAll('svg[id^="barcode-row-"]');
+
+        barcodeElements.forEach(svg => {
+            // Extraemos el ID del producto directamente del ID del elemento SVG
+            const productId = svg.id.replace('barcode-row-', '');
             
-            if (code && document.querySelector(elementId)) {
-                barcodeFunction(elementId, code, {
-                    format: "CODE128",
-                    lineColor: "#000",
-                    width: 1.5,
-                    height: 30,
-                    displayValue: false // No mostramos el texto dentro del SVG para ahorrar espacio
-                });
+            // Buscamos el producto en nuestra lista local
+            const prod = productos.value.find(p => p.id == productId);
+            const code = getBarcode(prod);
+            
+            if (code) {
+                try {
+                    barcodeFunction(svg, code, {
+                        format: "CODE128",
+                        lineColor: "#000",
+                        width: 1.2, // Un poco más delgado para mejorar rendimiento
+                        height: 25,  // Altura optimizada
+                        displayValue: false,
+                        flat: true // Mejora la velocidad de renderizado en listas largas
+                    });
+                } catch (err) {
+                    console.error(`Error renderizando barcode para producto ${productId}:`, err);
+                }
             }
         });
-    });
 };
 // Función para dibujar el código de barras
 const dibujarBarcode = () => {
@@ -301,15 +330,44 @@ watch(() => varianteInicial.value.barcode, () => {
     if (productDialog.value) dibujarBarcode();
 });
 
+// En tu <script setup>
+let searchTimeout = null;
 
+// Observar el filtro global
+watch(() => filters.value['global'].value, (newValue) => {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    
+    searchTimeout = setTimeout(() => {
+        // Reiniciamos a la página 0 cuando se busca algo nuevo
+        lazyParams.value.page = 0; 
+        cargarProductos();
+    }, 500); // Espera 500ms después de que el usuario deje de escribir
+});
 const cargarProductos = async () => {
+    loading.value = true;
     try {
-        const res = await ProductoService.listar();
+        // Preparamos los parámetros para Laravel
+        const params = {
+            page: (lazyParams.value.page || 0) + 1, // Laravel empieza en página 1
+            rows: lazyParams.value.rows || 5,
+            globalFilter: filters.value['global'].value
+        };
+        const res = await ProductoService.listar(params);
         productos.value = res.data.data;
+        totalRecords.value = res.data.total
         // Esperamos a que Vue dibuje la tabla y luego generamos los códigos
-        setTimeout(() => renderTableBarcodes(), 200); 
+       // Usamos un tiempo mínimo para asegurar que PrimeVue monte el componente DataTable
+        // Renderizamos códigos de barras después de que Vue actualice el DOM
+        nextTick(() => {
+            setTimeout(() => {
+                renderTableBarcodes();
+                loading.value = false;
+            }, 150);
+        });
     } catch (error) {
+        loading.value = false;
         console.error("Error cargando productos:", error);
+        toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los productos', life: 3000 });
     }
 };
 
@@ -329,9 +387,11 @@ const cargarSelectores = async () => {
 
 // Asegúrate de tener esta función para las rutas
 const getImageUrl = (url) => {
-    if (!url) return 'https://placehold.co/64x64?text=Sin+Imagen';
-    if (url.startsWith('http')) return url;
-    return `http://127.0.0.1:8000/storage/${url}`;
+    if (!url) return 'https://placehold.co/180x180?text=Sin+Imagen';
+    // Si ya es una URL completa (como una preview base64 o link externo)
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    // URL limpia de Laravel
+    return `http://127.0.0.1:8000/storage/${url.replace('public/', '')}`;
 };
 const cancelarNuevaImagen = () => {
     imageFile.value = null;
@@ -352,6 +412,7 @@ const onUpload = (event) => {
         reader.readAsDataURL(file);
     }
 };
+
 
 const getTotalStock = (product) => {
     const variants = product.variants || [];
@@ -389,10 +450,10 @@ const hideDialog = () => {
 const saveProduct = async () => {
     submitted.value = true;
     if (producto.value.name?.trim()) {
+        isUploading.value = true; // <--- Indicamos que estamos subiendo
         // SEGURIDAD: Si el barcode sigue vacío, generamos uno antes de enviar
-        if (!varianteInicial.value.barcode || varianteInicial.value.barcode.trim() === "") {
-            generarBarcode();
-        }
+        if (!varianteInicial.value.barcode) generarBarcode();             generarBarcode();
+    
         try {
             const formData = new FormData();
             
@@ -405,9 +466,10 @@ const saveProduct = async () => {
             formData.append('description', producto.value.description || '');
 
             const variantsArray = [{
+                id: varianteInicial.value.id || null,
                 size_id: varianteInicial.value.size_id,
                 color_id: varianteInicial.value.color_id,
-                stock: varianteInicial.value.stock,
+                stock: varianteInicial.value.stock || 0,
                 barcode: varianteInicial.value.barcode,
                 price: producto.value.base_price
             }];
@@ -419,15 +481,10 @@ const saveProduct = async () => {
                 formData.append('image', imageFile.value);
             }
 
-            // DEBUG: Ver qué se está enviando realmente
-            console.log("Enviando FormData...");
-            for (let pair of formData.entries()) {
-                console.log(pair[0] + ': ', pair[1]);
-            }
 
             if (producto.value.id) {
                 formData.append('_method', 'PUT');
-                await ProductoService.modificar(producto.value.id, formData);
+                await ProductoService.actualizar(producto.value.id, formData);
             } else {
                 await ProductoService.guardar(formData);
             }
@@ -435,28 +492,67 @@ const saveProduct = async () => {
             toast.add({ severity: 'success', summary: 'Éxito', detail: 'Producto guardado', life: 3000 });
             productDialog.value = false;
             await cargarProductos();
+            // Cache buster para refrescar la imagen en la tabla
+            productos.value = productos.value.map(p => {
+                if (p.images && p.images.length > 0) {
+                    const separator = p.images[0].url.includes('?') ? '&' : '?';
+                    p.images[0].url += `${separator}t=${new Date().getTime()}`;
+                }
+                return p;
+                updated_at_timestamp: Date.now()
+            });
         } catch (error) {
-            console.error("Error en el servidor:", error.response?.data);
-            toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el producto', life: 3000 });
+            console.error("Error en el servidor:", error);
+            // Extraer el mensaje de error real de Laravel
+            if (error.response && error.response.status === 422) {
+                // Si hay errores de validación (ej. barcode duplicado)
+               const validationErrors = error.response.data.errors;
+
+               // Recorremos los errores y mostramos un Toast por cada uno
+                Object.keys(validationErrors).forEach((key) => {
+                    toast.add({
+                        severity: 'error',
+                        summary: 'Error de Validación',
+                        detail: validationErrors[key][0], // El primer mensaje de error del campo
+                        life: 5000
+                    });
+                });
+                // errorDetalle = Object.values(error.response.data.errors).flat()[0];
+            } else {
+                // Error genérico para otros fallos (500, 404, etc.)
+                toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error', 
+                    detail: error.response?.data?.message || 'No se pudo procesar la solicitud', 
+                    life: 3000 
+                });
+            }
+            
+            //toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el producto', life: 3000 });
+        }finally {
+            isUploading.value = false; // <--- Terminamos de subir
         }
     }
 };
 
 const editProduct = (prod) => {
-    producto.value = { ...prod };
+    submitted.value = false;
     // IMPORTANTE: Limpiar previsualizaciones de archivos anteriores
     imageFile.value = null;
     imgPreview.value = null;
+    producto.value = { ...prod };
     // Cargar variantes si existen
-    const variants = prod.variants || [];
+    const variants = prod.variants || prod.product_variants || [];
     if (variants.length > 0) {
         varianteInicial.value = { ...variants[0] };
+    }else {
+        varianteInicial.value = { size_id: null, color_id: null, stock: 1, barcode: '' };
     }
     //imgPreview.value = prod.images?.[0]?.url || null;
     productDialog.value = true;
     setTimeout(() => {
         dibujarBarcode();
-    }, 150);
+    }, 200);
 };
 
 const confirmDeleteProduct = (prod) => {
@@ -480,4 +576,84 @@ const confirmDeleteProduct = (prod) => {
 const formatCurrency = (value) => {
     return value ? value.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '$0.00';
 };
+
+const onPage = (event) => {
+    lazyParams.value = event; // Asegúrate de definir lazyParams como ref
+    cargarProductos(); // Esto ya llama a renderTableBarcodes por dentro
+};
+
+const imprimirEtiquetas = () => {
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    // Configuración de la cuadrícula
+    const etiquetasPorFila = 3;
+    const anchoEtiqueta = 60;
+    const altoEtiqueta = 40;
+    const margenX = 10;
+    const margenY = 15;
+
+    productos.value.forEach((prod, index) => {
+        const code = getBarcode(prod);
+        if (!code) return;
+
+        // Calcular posición X e Y
+        const fila = Math.floor((index % (etiquetasPorFila * 6)) / etiquetasPorFila); 
+        const columna = index % etiquetasPorFila;
+        
+        const x = margenX + (columna * anchoEtiqueta);
+        const y = margenY + (fila * altoEtiqueta);
+
+        // 1. Dibujar Nombre del Producto
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text(prod.name.toUpperCase().substring(0, 25), x + 5, y);
+
+        // 2. Crear un canvas invisible para generar el barcode limpio
+        const canvas = document.createElement('canvas');
+        JsBarcode(canvas, code, {
+            format: "CODE128",
+            displayValue: true,
+            fontSize: 12,
+            width: 2,
+            height: 50
+        });
+
+        // 3. Convertir canvas a imagen y añadir al PDF
+        const imgData = canvas.toDataURL("image/png");
+        doc.addImage(imgData, 'PNG', x + 2, y + 2, 50, 20);
+
+        // Manejo de nueva página (si hay más de 18 etiquetas, por ejemplo)
+        if ((index + 1) % 18 === 0 && index !== productos.value.length - 1) {
+            doc.addPage();
+        }
+    });
+
+    doc.save(`etiquetas_${new Date().getTime()}.pdf`);
+};
+
 </script>
+
+<style scoped>
+.image-container {
+    position: relative;
+    width: 180px;
+    height: 180px;
+}
+
+.spinner-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+</style>
