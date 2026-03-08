@@ -20,6 +20,12 @@ const routes = [
         component: AppLayout, // El layout de Sakai
         meta: { requireAuth: true }, // Todo lo que esté en /admin requiere token
         children: [
+
+            {   path: 'dashboard', 
+                name: 'Dashboard', 
+                component: () => import('@/views/admin/DashboardView.vue'),
+                
+            },
             {   path: 'perfil', 
                 name: 'Perfil', 
                 component: () => import('@/views/admin/Perfil.vue'),
@@ -46,6 +52,11 @@ const routes = [
                 component: () => import('@/views/admin/Ventas.vue'),
                 //meta: {redirectIfAuth: true} 
             },
+            {
+                path: 'historial-caja',
+                name: 'historial-caja',
+                component: () => import('@/views/admin/HistorialCaja.vue'),
+            },
             // ... dentro de children: [ ]
             {
                 path: 'categorias', // Esto crea /admin/categorias
@@ -56,6 +67,11 @@ const routes = [
                 path: 'marcas', // Esto crea /admin/marcas
                 name: 'marcas',
                 component: () => import('@/views/admin/Marcas.vue')
+            },
+            {
+                path: 'abonos', // Esto crea /admin/abonos
+                name: 'abonos',
+                component: () => import('@/views/admin/AbonosView.vue')
             },
             // Añadimos esta para evitar el error del menú
             {

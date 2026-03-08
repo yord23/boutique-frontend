@@ -5,7 +5,7 @@ import AppMenuItem from './AppMenuItem.vue';
 const model = ref([
     {
         label: 'Panel Principal',
-        items: [{ label: 'Dashboard', icon: 'pi pi-fw pi-home', to: '/admin' }]
+        items: [{ label: 'Dashboard', icon: 'pi pi-fw pi-home', to: '/admin/Dashboard' }]
     },
     {
         label: 'Inventario',
@@ -19,8 +19,9 @@ const model = ref([
         label: 'Operaciones',
         items: [
             { label: 'Realizar Venta', icon: 'pi pi-fw pi-money-bill', to: '/admin/ventas' },
-            { label: 'Historial de Ventas', icon: 'pi pi-fw pi-history', to: '/ventas' },
-            { label: 'Clientes', icon: 'pi pi-fw pi-users', to: '/clientes' }
+            { label: 'Historial de Ventas', icon: 'pi pi-fw pi-history', to: '/admin/historial-caja' },
+            { label: 'Clientes', icon: 'pi pi-fw pi-users', to: '/clientes' },
+            { label: 'Abonos', icon: 'pi pi-fw pi-wallet', to: '/admin/abonos' },
         ]
     },/*
     {

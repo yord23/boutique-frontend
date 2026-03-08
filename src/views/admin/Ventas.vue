@@ -99,6 +99,7 @@
                         {{ formatCurrency(venta.change_amount) }}
                     </div>
                 </div>
+                
                 <Button 
     label="Vaciar Carrito" 
     icon="pi pi-trash" 
@@ -106,20 +107,146 @@
     @click="limpiarCarrito" 
     :disabled="carrito.length === 0"
 />
+<div v-if="venta.payment_method === 'credit'" class="field mt-3">
+    <label class="font-bold">Seleccionar Cliente</label>
+    <Select 
+        v-model="venta.customer_id" 
+        :options="clientes" 
+        optionLabel="name" 
+        optionValue="id" 
+        placeholder="Buscar cliente..." 
+        filter 
+        class="w-full" 
+    />
+    <small class="text-500">Obligatorio para ventas a crédito</small>
+</div>
 
                 <Button label="FINALIZAR VENTA" icon="pi pi-check" class="w-full p-button-lg mt-3" 
-                        :disabled="carrito.length === 0 || venta.change_amount < 0" 
+                        :disabled="carrito.length === 0 || (venta.payment_method !== 'credit' && venta.change_amount < 0)" 
                         @click="procesarVenta" />
             </div>
         </div>
+        
+    <Dialog 
+        v-model:visible="mostrarApertura" 
+        modal 
+        header="💰 Apertura de Caja" 
+        :closable="false" 
+        :draggable="false"
+        :style="{ width: '380px' }"
+        class="p-fluid"
+    >
+        <div class="flex flex-column gap-3 mt-2">
+            <div class="p-3 border-round-lg bg-blue-50 text-blue-800 line-height-3">
+                <i class="pi pi-info-circle mr-2"></i>
+                Para iniciar las ventas de hoy, registra el efectivo inicial para el control de cambio.
+            </div>
+            
+            <div class="flex flex-column gap-2">
+                <label for="monto" class="font-bold">Monto Inicial en Caja</label>
+                <div class="p-inputgroup">
+                    <span class="p-inputgroup-addon">
+                        <i class="pi pi-money-bill"></i>
+                    </span>
+                    <InputNumber 
+                        id="monto"
+                        v-model="fondoInicial" 
+                        mode="currency" 
+                        currency="USD" 
+                        locale="en-US" 
+                        placeholder="0.00"
+                        :min="0"
+                        autofocus 
+                        @keyup.enter="abrirCaja"
+                        :class="{'p-invalid': fondoInicial === null}"
+                    />
+                </div>
+                <small v-if="fondoInicial === null" class="p-error">El monto es obligatorio para iniciar.</small>
+            </div>
+            
+            <div class="mt-2">
+                <Button 
+                    label="Empezar Jornada" 
+                    icon="pi pi-play" 
+                    @click="abrirCaja" 
+                    :loading="cargandoApertura"
+                    :disabled="fondoInicial === null || fondoInicial < 0"
+                    class="p-button-success p-py-3 font-bold shadow-2"
+                />
+            </div>
+        </div>
+    </Dialog>
+
+    <Button 
+    label="Cerrar Caja" 
+    icon="pi pi-lock" 
+    class="p-button-secondary w-full mt-2" 
+    @click="mostrarCierre = true" 
+/>
+
+<Dialog 
+    v-model:visible="mostrarCierre" 
+    modal 
+    header="🔒 Arqueo y Cierre de Caja" 
+    :style="{ width: '400px' }"
+    class="p-fluid"
+>
+    <div class="flex flex-column gap-3 mt-2">
+        <div class="p-3 border-round-lg bg-orange-50 text-orange-800 line-height-3">
+            <i class="pi pi-exclamation-triangle mr-2"></i>
+            Ingresa la cantidad total de efectivo que tienes físicamente en caja para realizar el cuadre.
+        </div>
+
+        <div class="field">
+            <label class="font-bold">Efectivo Físico Cantado</label>
+            <InputNumber 
+                v-model="efectivoReal" 
+                mode="currency" 
+                currency="USD" 
+                locale="en-US" 
+                autofocus
+                :min="0"
+            />
+        </div>
+
+        <div class="field">
+            <label class="font-bold">Notas u Observaciones</label>
+            <Textarea 
+                v-model="notasCierre" 
+                rows="3" 
+                placeholder="Ej: Faltó cambio de 5 pesos, etc." 
+            />
+        </div>
+
+        <div class="flex gap-2">
+            <Button 
+                label="Cancelar" 
+                icon="pi pi-times" 
+                class="p-button-text" 
+                @click="mostrarCierre = false" 
+            />
+            <Button 
+                label="Confirmar Cierre" 
+                icon="pi pi-check-circle" 
+                class="p-button-danger" 
+                :loading="cargandoCierre"
+                @click="ejecutarCierre" 
+            />
+        </div>
+    </div>
+</Dialog>
     </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import ProductoService from '@/services/producto.service'; // Asumiendo que listar está aquí
 import VentasService from '@/services/ventas.service';
+import CajaService from '@/services/caja.service'; // Nuevo servicio para manejar caja
+import ClienteService from '@/services/cliente.service';
+import Select from 'primevue/select';
+
 
 const toast = useToast();
 const barcodeSearch = ref('');
@@ -129,15 +256,140 @@ const venta = ref({
     total: 0,
     received_amount: 0,
     change_amount: 0,
-    payment_method: 'cash'
+    payment_method: 'cash',
+    customer_id: null // Asegúrate de que esto exista desde el inicio
 });
-
+const mostrarApertura = ref(false);
+const fondoInicial = ref(0);
+const cargandoApertura = ref(false); // Para mostrar un spinner en el botón
+// Variables para el cierre de caja
+const mostrarCierre = ref(false);
+const efectivoReal = ref(0);
+const notasCierre = ref('');
+const cargandoCierre = ref(false);
+const clientes = ref([]);
 const metodosPago = [
     { label: 'Efectivo', value: 'cash' },
     { label: 'Tarjeta', value: 'card' },
-    { label: 'Transferencia', value: 'transfer' }
+    { label: 'Transferencia', value: 'transfer' },
+    { label: 'Crédito', value: 'credit' }
 ];
+watch(() => venta.value.payment_method, (newVal) => {
+    if (newVal === 'credit') {
+        venta.value.received_amount = 0; // Limpiar monto si es crédito
+    } else {
+        venta.value.customer_id = null; // Limpiar cliente si vuelve a efectivo
+    }
+});
+const cargarClientes = async () => {
+    try {
+        // Usamos el método en español
+        const res = await ClienteService.obtenerTodos();
+        console.log("Datos de clientes recibidos:", res.data); // MIRA LA CONSOLA (F12)
+        clientes.value = res.data;
+    } catch (error) {
+        console.error("Error al cargar clientes:", error);
+    }
+};
+onMounted(async () => {
+    await cargarClientes();
+    try {
+        const response = await CajaService.verificarEstado();
+        console.log("Respuesta de la caja:", response.data); // <--- Revisa esto en la consola
 
+        if (!response.data.abierta) {
+            mostrarApertura.value = true;
+        } else {
+            toast.add({ 
+                severity: 'info', 
+                summary: 'Caja Abierta', 
+                detail: 'Continuando jornada actual', 
+                life: 2000 
+            });
+        }
+    } catch (error) {
+        console.error("Error al conectar con el servidor:", error);
+        // Sugerencia: Si hay error de conexión, podrías mostrar un mensaje al usuario
+        toast.add({ 
+            severity: 'error', 
+            summary: 'Error de conexión', 
+            detail: 'No se pudo verificar el estado de la caja', 
+            life: 5000 
+        });
+    }
+});
+
+
+// Función para ejecutar el cierre
+const ejecutarCierre = async () => {
+    cargandoCierre.value = true;
+    try {
+        const payload = {
+            efectivo_real: efectivoReal.value,
+            notas: notasCierre.value
+        };
+
+        const { data } = await CajaService.cerrar(payload);
+
+        toast.add({ 
+            severity: 'success', 
+            summary: 'Caja Cerrada', 
+            detail: 'El corte se ha realizado correctamente', 
+            life: 3000 
+        });
+
+        mostrarCierre.value = false;
+        
+        // Opcional: Redirigir al dashboard o recargar para bloquear ventas
+        setTimeout(() => location.reload(), 2000);
+
+    } catch (error) {
+        const msg = error.response?.data?.message || 'Error al cerrar caja';
+        toast.add({ severity: 'error', summary: 'Error', detail: msg, life: 4000 });
+    } finally {
+        cargandoCierre.value = false;
+    }
+};
+// 2. Función que se ejecuta al dar clic en "Empezar Jornada"
+const abrirCaja = async () => {
+    // Validación de entrada
+    if (fondoInicial.value === null || fondoInicial.value < 0) {
+        toast.add({ 
+            severity: 'warn', 
+            summary: 'Monto inválido', 
+            detail: 'Por favor ingresa un valor mayor o igual a 0', 
+            life: 3000 
+        });
+        return;
+    }
+
+    cargandoApertura.value = true;
+
+    try {
+        // Usamos el Service para enviar el monto
+        const { data } = await CajaService.abrir(fondoInicial.value);
+
+        mostrarApertura.value = false;
+        toast.add({ 
+            severity: 'success', 
+            summary: 'Caja Abierta', 
+            detail: data.message || 'Ya puedes comenzar a vender', 
+            life: 3000 
+        });
+
+    } catch (error) {
+        // Manejo de errores a través del Service
+        const mensajeError = error.response?.data?.message || 'No se pudo abrir la caja';
+        toast.add({ 
+            severity: 'error', 
+            summary: 'Error', 
+            detail: mensajeError, 
+            life: 3000 
+        });
+    } finally {
+        cargandoApertura.value = false;
+    }
+};
 const quitarDelCarrito = (index) => {
     carrito.value.splice(index, 1);
     calcularTotales();
@@ -245,10 +497,12 @@ const agregarAlCarrito = (prod, varianteSeleccionada) => {
         carrito.value.push({
             product_variant_id: nuevaVarianteId,
             name: prod.name,
-            // Si el producto tiene talla/color, es bueno mostrarlo
-           variant_info: `${varianteSeleccionada.color?.name || ''} ${varianteSeleccionada.size?.name || ''}`.trim(), 
-            // Usamos el precio de la variante si existe, si no, el del producto
-            price: parseFloat(varianteSeleccionada.price || prod.base_price),
+            // Información visual de la variante (Talla/Color)
+            variant_info: `${varianteSeleccionada.color?.name || ''} ${varianteSeleccionada.size?.name || ''}`.trim(), 
+            // PRECIO DE VENTA: Priorizamos el de la variante, si no, el base
+            price: parseFloat(varianteSeleccionada.price || 0),
+            // PRECIO DE COMPRA: Para calcular tu utilidad después (Corte de Caja)
+            cost_price: parseFloat(varianteSeleccionada.cost_price || 0),
             quantity: 1
         });
     }
@@ -270,11 +524,24 @@ const procesarVenta = async () => {
     // Evitar procesar si el carrito está vacío
     if (carrito.value.length === 0) return;
 
+    // 2. Validación de cliente para ventas a crédito
+    if (venta.value.payment_method === 'credit' && !venta.value.customer_id) {
+        toast.add({ 
+            severity: 'warn', 
+            summary: 'Atención', 
+            detail: 'Debe seleccionar un cliente para ventas a crédito', 
+            life: 3000 
+        });
+        return;
+    }
+
     try {
         const payload = {
             payment_method: venta.value.payment_method,
-            received_amount: venta.value.received_amount,
-            items: carrito.value
+            received_amount: venta.value.payment_method === 'credit' ? 0 : venta.value.received_amount,
+            customer_id: venta.value.customer_id, // <--- Este dato llega a Laravel
+            items: carrito.value,
+            total: venta.value.total
         };
         
         // Enviamos la venta al servidor
