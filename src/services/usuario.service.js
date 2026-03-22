@@ -4,6 +4,10 @@ export default {
     listar: (q = "") => {
         return Api().get("/usuario?q=" + q);
     },
+    // AÑADE ESTA RUTA
+    getPermisos() {
+        return Api().get('/permisos');
+    },
     guardar: (datos) => {
         return Api().post("/usuario", datos);
     },

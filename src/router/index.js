@@ -16,15 +16,25 @@ const routes = [
         meta: {redirectIfAuth: true} 
     },
     {
+        path: '/access-denied',
+        name: 'AccessDenied',
+        component: () => import('@/views/auth/AccessDenied.vue')
+    },
+    {
         path: '/admin',
         component: AppLayout, // El layout de Sakai
         meta: { requireAuth: true }, // Todo lo que esté en /admin requiere token
         children: [
-
             {   path: 'dashboard', 
                 name: 'Dashboard', 
                 component: () => import('@/views/admin/DashboardView.vue'),
                 
+            },
+            {
+                path: 'auditoria',
+                name: 'auditoria',
+                component: () => import('@/views/admin/Auditoria.vue'),
+                meta: { requireAuth: true, role: 'admin' }
             },
             {   path: 'perfil', 
                 name: 'Perfil', 
@@ -37,13 +47,25 @@ const routes = [
                 path: 'usuarios',
                 name: 'usuarios',
                 component: () => import('@/views/admin/Usuarios.vue'),
-                //meta: {redirectIfAuth: true} 
+                meta: { requireAuth: true, role: 'admin' }, // <--- AGREGAR ESTO 
+            },
+            {
+                path: 'roles',
+                name: 'roles',
+                component: () => import('@/views/admin/Roles.vue'),
+                meta: { requireAuth: true, role: 'admin' }, // <--- AGREGAR ESTO 
             },
             {
                 path: 'productos',
                 name: 'productos',
                 component: () => import('@/views/admin/Productos.vue'),
-                //meta: {redirectIfAuth: true} 
+                meta: { requireAuth: true, role: 'admin' }, // <--- AGREGAR ESTO 
+            },
+            {
+                path: 'compras',
+                name: 'compras',
+                component: () => import('@/views/admin/ComprasView.vue'),
+                meta: { requireAuth: true, role: 'admin' }, // <--- AGREGAR ESTO
             },
             
             {
@@ -56,6 +78,22 @@ const routes = [
                 path: 'historial-caja',
                 name: 'historial-caja',
                 component: () => import('@/views/admin/HistorialCaja.vue'),
+            },
+            {
+                path: 'historial-compras',
+                name: 'historial-compras',
+                component: () => import('@/views/admin/HistorialComprasView.vue'),
+            },
+            {
+                path: 'precios',   
+                name: 'precios',
+                component: () => import('@/views/admin/GestionPreciosView.vue'),
+                meta: { requireAuth: true, role: 'admin' }, // <--- AGREGAR ESTO
+            },
+            {
+                path: 'inventario',
+                name: 'inventario',
+                component: () => import('@/views/admin/InventarioView.vue'),
             },
             // ... dentro de children: [ ]
             {
@@ -91,7 +129,8 @@ const routes = [
     {
         path: '/',
         redirect: '/login'
-    }
+    },
+    
 ];
 
 // 2. CREACIÓN DEL ROUTER (Lo que preguntaste)
@@ -155,14 +194,23 @@ const router = createRouter({
 // GUARD SIMPLIFICADO Y FUNCIONAL
 router.beforeEach((to, from, next) => {
     const token = localStorage.getItem("access_token");
+    const userData = JSON.parse(localStorage.getItem("user_data") || 'null'); // Obtenemos el usuario de forma segura
 
     // 1. Si la ruta requiere autenticación y no hay token -> al Login
     if (to.matched.some(record => record.meta.requireAuth) && !token) {
         return next({ name: 'Login' });
     }
+    // 2. Lógica de Roles
+    const requiereAdmin = to.matched.some(record => record.meta.role === 'admin');
+    
+    if (requiereAdmin) {
+        if (!userData || userData.role !== 'admin') {
+            return next({ name: 'AccessDenied' });
+        }
+    }
 
-    // 2. Si el usuario ya está logueado e intenta ir al Login -> al Perfil
-    if (to.matched.some(record => record.meta.redirectIfAuth) && token) {
+    // 3. Evitar entrar al login si ya está logueado
+    if (to.path === '/login' && token) {
         return next({ name: 'Perfil' });
     }
 

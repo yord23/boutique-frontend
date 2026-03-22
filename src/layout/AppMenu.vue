@@ -1,27 +1,40 @@
 <script setup>
 import { ref } from 'vue';
 import AppMenuItem from './AppMenuItem.vue';
+//const user = JSON.parse(localStorage.getItem('user')); // O desde tu Store/Pinia
+
+// Leemos de "user_data" que es como lo guardas en Login.vue
+const user = JSON.parse(localStorage.getItem('user_data') || 'null');
 
 const model = ref([
     {
         label: 'Panel Principal',
+        visible: user?.role === 'admin',
         items: [{ label: 'Dashboard', icon: 'pi pi-fw pi-home', to: '/admin/Dashboard' }]
     },
     {
         label: 'Inventario',
+        visible: user?.role === 'admin',
         items: [
             { label: 'Productos', icon: 'pi pi-fw pi-tag', to: '/admin/productos' },
-            { label: 'Categorías', icon: 'pi pi-fw pi-filter', to: '/admin/categorias' }
+            { label: 'Categorías', icon: 'pi pi-fw pi-filter', to: '/admin/categorias' },
+            { label: 'Tallas y Colores', icon: 'pi pi-fw pi-th-large', to: '/admin/tallas-colores' },
+            { label: 'Registrar Compra', icon: 'pi pi-fw pi-shopping-cart', to: '/admin/compras' },
+            { label: 'Historial de Compras', icon: 'pi pi-fw pi-history', to: '/admin/historial-compras' },
+            { label: 'Reporte de Inventario', icon: 'pi pi-fw pi-chart-bar', to: '/admin/inventario' },
+            { label: 'Gestión de Precios',   icon: 'pi pi-fw pi-dollar',   to: '/admin/precios' },
         ]
     },
 
     {
         label: 'Operaciones',
+        visible: true, // Visible para todos
         items: [
             { label: 'Realizar Venta', icon: 'pi pi-fw pi-money-bill', to: '/admin/ventas' },
-            { label: 'Historial de Ventas', icon: 'pi pi-fw pi-history', to: '/admin/historial-caja' },
+            { label: 'Historial de Ventas', icon: 'pi pi-fw pi-history', to: '/admin/historial-caja',visible: user?.role === 'admin' },
             { label: 'Clientes', icon: 'pi pi-fw pi-users', to: '/clientes' },
             { label: 'Abonos', icon: 'pi pi-fw pi-wallet', to: '/admin/abonos' },
+            { label: 'Auditoría', icon: 'pi pi-fw pi-file', to: '/admin/auditoria', visible: user?.role === 'admin' }
         ]
     },/*
     {
@@ -34,10 +47,14 @@ const model = ref([
     },*/
     {
         label: 'Seguridad',
+        visible: user?.role === 'admin',
         items: [
             {   label: 'Vendedores (Usuarios)', 
                 icon: 'pi pi-fw pi-user-plus', 
-                to: '/admin/usuarios' }
+                to: '/admin/usuarios' },
+            {   label: 'Roles y Permisos', 
+                icon: 'pi pi-fw pi-shield', 
+                to: '/admin/roles' }
         ]
     },
 

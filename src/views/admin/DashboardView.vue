@@ -47,20 +47,62 @@
                 </div>
             </div>
         </div>
+        <div class="col-12 lg:col-6 mt-4">
+    <div class="card">
+        <div class="flex justify-content-between align-items-center mb-3">
+            <h5 class="m-0 text-red-600 font-bold">
+                <i class="pi pi-exclamation-triangle mr-2"></i>Alertas de Stock Bajo
+            </h5>
+            <Button icon="pi pi-refresh" class="p-button-text p-button-sm" @click="cargarAlertas" />
+        </div>
+
+        <DataTable :value="productosBajoStock" :rows="5" :paginator="true" responsiveLayout="scroll" class="p-datatable-sm">
+            <template #empty> No hay productos con stock crítico. ¡Todo al día! </template>
+            
+            <Column field="product.name" header="Producto"></Column>
+            <Column field="color" header="Color/Talla">
+                <template #body="slotProps">
+                    {{ slotProps.data.color }} - {{ slotProps.data.size }}
+                </template>
+            </Column>
+            <Column field="stock" header="Actual">
+                <template #body="slotProps">
+                    <span class="text-red-500 font-bold">{{ slotProps.data.stock }}</span>
+                </template>
+            </Column>
+            <Column field="min_stock" header="Mínimo"></Column>
+        </DataTable>
+    </div>
+</div>
     </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import CajaService from '@/services/caja.service';
+import inventoryService  from '@/services/inventory.service';
 
 const stats = ref({ ventas_hoy: 0, pedidos_hoy: 0, ganancia_mes: 0, clientes_nuevos: 0 });
 const chartData = ref(null);
 const chartOptions = ref(null);
 const pieData = ref(null);
 const pieOptions = ref(null);
+const productosBajoStock = ref([]);
+const cargandoAlertas = ref(false);
 
 const formatCurrency = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
+
+const cargarAlertas = async () => {
+    cargandoAlertas.value = true;
+    try {
+        const response = await inventoryService.obtenerAlertas();
+        productosBajoStock.value = response.data;
+    } catch (error) {
+        console.error("Error al cargar alertas de stock:", error);
+    } finally {
+        cargandoAlertas.value = false;
+    }
+};
 
 const initCharts = (data) => {
     const documentStyle = getComputedStyle(document.documentElement);
@@ -106,7 +148,9 @@ const initCharts = (data) => {
     };
 };
 
+
 onMounted(async () => {
+    cargarAlertas();
     try {
         const { data } = await CajaService.getStats();
         stats.value = data.widgets;
